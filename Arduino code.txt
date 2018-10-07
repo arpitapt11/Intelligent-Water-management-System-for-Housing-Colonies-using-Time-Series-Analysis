@@ -1,0 +1,174 @@
+//Start of program
+
+#include <NewPing.h> 
+#include <SoftwareSerial.h>
+
+//Configuring pump and ultrasonic sensor 
+int relay = 10;
+int val=0;
+int trig=12;
+int echo=11;
+int value_trig;
+long Distanceincm, duration, MAX_DISTANCE;
+
+#define DEBUG FALSE //to remove debug msgs
+
+//Hardware Serial
+#define _baudrate 115200
+
+//Software Serial
+#define _rxpin      3
+#define _txpin      2
+SoftwareSerial debug( _rxpin, _txpin ); // RX, TX
+
+//Network Information
+#define SSID "SATYAMPG04"
+#define PASS "Roomno04"
+#define IP "184.106.153.149" // ThingSpeak IP Address: 184.106.153.149
+
+
+String GET = "https://api.thingspeak.com/update?api_key=5OO4NBI1HKUUA9GY&field1=0";
+
+NewPing sonar(trig, echo, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
+
+void setup() 
+{
+    pinMode(relay,OUTPUT); //Setup Relay pin as output pin
+    digitalWrite(relay,LOW);
+    pinMode(trig, OUTPUT); //Setup trigger pin of ultrasonic as output pin
+    pinMode(echo, INPUT);  //Setup echo pin of ultrasonic as input pin 
+
+    Serial.begin( _baudrate );
+    debug.begin( _baudrate );
+
+    sendDebug("AT");
+    delay(5000);
+    if(Serial.find("OK"))
+    {
+    debug.println("RECEIVED: OK\nData ready to sent!");
+    connectWiFi();
+    }
+}
+     
+     
+void loop() 
+{
+    delay(50); // Wait 50ms between pings (about 20 pings/sec). 29ms should be the shortest delay between pings.
+    val=sonar.ping_cm();
+    void sensor();  
+  
+  if(val<2) //Water level reaches the Top of the Tank
+  {
+
+    delay(50);
+    digitalWrite(relay,LOW); //Pump Off
+  
+  }
+
+  else if(val>8) // Water is empty on the Tank
+  {
+    delay(1000);
+    digitalWrite(relay,HIGH); // Pump ON
+  }
+
+  value_trig = digitalRead(trig);
+  String tr =String(value_trig);// turn integer to string
+  updateTS(tr);
+  delay(3000);
+}  
+  
+void updateTS(String T)
+ {
+    
+  // ESP8266 Client
+  String cmd = "AT+CIPSTART=\"TCP\",\"";// Setup TCP connection
+  cmd += IP;
+  cmd += "\",80";
+  sendDebug(cmd);
+  delay(2000);
+  if( Serial.find( "Error" ) )
+  {
+    debug.print( "RECEIVED: Error\nExit1" );
+    return;
+  }
+
+  cmd = GET + "&field1=" + T +"\r\n";
+  Serial.print( "AT+CIPSEND=" );
+  Serial.println( cmd.length() );
+  if(Serial.find( ">" ) )
+  {
+    debug.print(">");
+    debug.print(cmd);
+    Serial.print(cmd);
+  }
+  else
+  {
+    sendDebug( "AT+CIPCLOSE: connected" );//close TCP connection
+  }
+  if( Serial.find("OK") )
+  {
+    debug.println( "RECEIVED: OK" );
+  }
+  else
+  {
+    debug.println( "RECEIVED: Error\nExit2" );
+  }  
+  
+}
+void sendDebug(String cmd)
+{
+  debug.print("SEND: ");
+  debug.println(cmd);
+  Serial.println(cmd);
+}
+boolean connectWiFi()
+{
+  Serial.println("AT+CWMODE=1");//WiFi STA mode - if '3' it is both client and AP
+  delay(2000);
+  //Connect to Router with AT+CWJAP="SSID","Password";
+  // Check if connected with AT+CWJAP?
+  String cmd="AT+CWJAP=\""; // Join accespoint
+  cmd+=SSID;
+  cmd+="\",\"";
+  cmd+=PASS;
+  cmd+="\"";
+  sendDebug(cmd);
+  delay(5000);
+  if(Serial.find("OK"))
+  {
+    debug.println("RECEIVED: OK");
+    return true;
+  }
+  else
+  {
+    debug.println("RECEIVED: Error");
+    return false;
+  }
+
+  cmd = "AT+CIPMUX=0";// Set Single connection
+  sendDebug( cmd );
+  if( Serial.find( "Error") )
+  {
+    debug.print( "RECEIVED: Error" );
+    return false;
+  }
+}
+
+
+
+void sensor()
+{
+
+    digitalWrite(trig, HIGH);
+    delay(15);
+    digitalWrite(trig, LOW);
+    duration = pulseIn(echo, HIGH);
+    Distanceincm = duration / 58;  // time to centimetres
+ 
+    Serial.print("Distance in cm = ");
+    Serial.print(Distanceincm);
+ 
+
+}
+
+//End of program
